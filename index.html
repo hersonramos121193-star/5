@@ -455,22 +455,34 @@ function validateCloudUrl_(url){
   return null;
 }
 
+function jsonp_(url){
+  return new Promise((resolve, reject)=>{
+    const cbName = "dash5sCb_" + Date.now() + "_" + Math.floor(Math.random()*10000);
+    const script = document.createElement("script");
+    const timeout = setTimeout(()=>{
+      cleanup();
+      reject(new Error("Tiempo de espera agotado. Revisa tu conexión a internet o que la URL sea correcta."));
+    }, 12000);
+    function cleanup(){
+      clearTimeout(timeout);
+      delete window[cbName];
+      if(script.parentNode) script.parentNode.removeChild(script);
+    }
+    window[cbName] = (data)=>{ cleanup(); resolve(data); };
+    script.onerror = ()=>{ cleanup(); reject(new Error("No se pudo cargar la URL. Verifica que sea correcta y que el script esté implementado con acceso 'Cualquier usuario'.")); };
+    const sep = url.includes("?") ? "&" : "?";
+    script.src = url + sep + "callback=" + cbName + "&t=" + Date.now();
+    document.body.appendChild(script);
+  });
+}
+
 async function cloudPull(){
   if(!CLOUD_URL){ setSyncStatus("off","local (sin nube)"); return; }
   const problem = validateCloudUrl_(CLOUD_URL);
   if(problem){ setSyncStatus("off","URL inválida"); document.getElementById("configStatus").textContent = "⚠ "+problem; return; }
   setSyncStatus("busy","sincronizando...");
   try{
-    const res = await fetch(CLOUD_URL + "?action=getAll&t=" + Date.now());
-    if(!res.ok){
-      throw new Error("El servidor respondió con error HTTP "+res.status+". Revisa que el Apps Script esté implementado con acceso 'Cualquier usuario'.");
-    }
-    const text = await res.text();
-    let data;
-    try{ data = JSON.parse(text); }
-    catch(parseErr){
-      throw new Error("La respuesta no fue JSON válido. Esto pasa cuando la URL es de prueba (/dev) o pide iniciar sesión. Respuesta recibida: " + text.slice(0,120));
-    }
+    const data = await jsonp_(CLOUD_URL + "?action=getAll");
     if(data && data.empleados && data.evaluaciones){
       DB = { empleados: data.empleados, evaluaciones: data.evaluaciones };
       saveLocal();
@@ -490,16 +502,17 @@ async function cloudPush(){
   const problem = validateCloudUrl_(CLOUD_URL);
   if(problem){ setSyncStatus("off","URL inválida"); return; }
   try{
-    const res = await fetch(CLOUD_URL, {
+    // modo no-cors: Google Apps Script no siempre agrega encabezados CORS a las respuestas de POST
+    // desde otro dominio. Con no-cors la petición sí llega y se ejecuta en el servidor,
+    // aunque el navegador no nos deje leer la respuesta de confirmación.
+    await fetch(CLOUD_URL, {
       method:"POST",
+      mode:"no-cors",
       headers:{"Content-Type":"text/plain"},
       body: JSON.stringify({ action:"saveAll", empleados: DB.empleados, evaluaciones: DB.evaluaciones })
     });
-    if(!res.ok){
-      throw new Error("El servidor respondió con error HTTP "+res.status);
-    }
     setSyncStatus("ok","conectado a Google Sheets");
-    document.getElementById("configStatus").textContent = "✔ Guardado en la nube. Última sincronización: "+new Date().toLocaleTimeString("es-MX");
+    document.getElementById("configStatus").textContent = "✔ Guardado enviado a la nube. Última sincronización: "+new Date().toLocaleTimeString("es-MX");
   }catch(e){
     console.error(e);
     setSyncStatus("off","no se pudo sincronizar (guardado local)");

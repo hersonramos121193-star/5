@@ -44,6 +44,18 @@ A partir de este momento, **cada vez que agregues empleados o captures una evalu
 
 > 💡 Tip: puedes compartir el link de GitHub Pages con quien vaya a capturar las evaluaciones. La primera vez tendrá que pegar la misma URL de Apps Script en Configuración.
 
+## Nota técnica: por qué a veces no sincronizaba
+
+Google Apps Script no siempre agrega el permiso necesario (encabezado CORS) para que otra página web (como tu Dashboard en GitHub Pages) pueda leer su respuesta directamente. Por eso la app usa dos trucos:
+
+- Para **leer** datos del Sheet: la app inserta un `<script>` con la URL (técnica JSONP), lo cual sí está permitido por los navegadores y evita el bloqueo de CORS.
+- Para **guardar** datos: la app envía la información en modo `no-cors`. Esto significa que el navegador no puede confirmar la respuesta, pero la petición sí llega y se guarda correctamente en el Sheet.
+
+Si alguna vez ves "Failed to fetch" en la pestaña Configuración, verifica primero que:
+1. Estás abriendo la app desde el link de **GitHub Pages** (`https://...github.io/...`), no desde un archivo descargado.
+2. La URL de Apps Script termina en `/exec` (no en `/dev`).
+3. El script está implementado con acceso "Cualquier usuario" y fue vuelto a implementar (Nueva versión) después de cualquier cambio al código.
+
 ## 4. Actualizar la app en el futuro
 
 Si vuelves a modificar `index.html` (o cualquier archivo) y lo subes a GitHub:
