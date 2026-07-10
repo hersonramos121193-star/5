@@ -390,7 +390,13 @@ td.center, th.center{text-align:center;}
       </p>
     </div>
     <div class="panel">
-      <h2><span class="idx">08</span> Forzar actualización de la app</h2>
+      <h2><span class="idx">08</span> Reparar fechas dañadas</h2>
+      <p class="small-text">Si ves "Invalid Date" o "(fecha dañada)" en alguna evaluación (por datos guardados antes de la corrección), usa este botón para intentar repararlas automáticamente y volver a guardarlas en la nube.</p>
+      <button class="btn brass" id="btnRepararFechas">🩹 Reparar fechas dañadas</button>
+      <p class="small-text" id="repararStatus"></p>
+    </div>
+    <div class="panel">
+      <h2><span class="idx">09</span> Forzar actualización de la app</h2>
       <p class="small-text">Si acabas de actualizar los archivos en GitHub y no ves los cambios, usa este botón para limpiar la caché del dispositivo.</p>
       <button class="btn ghost" id="btnForceUpdate">🔄 Forzar actualización de la app</button>
     </div>
@@ -565,8 +571,26 @@ function lastFriday(){
   d.setDate(d.getDate()-diff);
   return d.toISOString().slice(0,10);
 }
+function normalizeSemana_(raw){
+  if(!raw) return null;
+  let s = String(raw).trim();
+  // Si ya viene en formato correcto YYYY-MM-DD, listo.
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  // Si viene como fecha/hora completa (ej. dañada por Sheets), tomamos solo la parte de fecha.
+  const isoMatch = s.match(/^(\d{4}-\d{2}-\d{2})T/);
+  if(isoMatch) return isoMatch[1];
+  // Último intento: dejar que el navegador la interprete y reconstruir YYYY-MM-DD.
+  const d = new Date(s);
+  if(!isNaN(d.getTime())){
+    return d.toISOString().slice(0,10);
+  }
+  return null; // No se pudo recuperar
+}
 function fmtDate(iso){
-  const d = new Date(iso+"T00:00:00");
+  const clean = normalizeSemana_(iso);
+  if(!clean) return "(fecha dañada)";
+  const d = new Date(clean+"T00:00:00");
+  if(isNaN(d.getTime())) return "(fecha dañada)";
   return d.toLocaleDateString("es-MX",{day:"2-digit",month:"short",year:"numeric"});
 }
 function deptoDe(id){
@@ -882,6 +906,26 @@ function renderAll(){
   renderDashboard();
   renderHistorial();
 }
+
+/* Reparar fechas dañadas (de datos guardados antes de la corrección) */
+document.getElementById("btnRepararFechas").addEventListener("click", async ()=>{
+  let reparadas = 0, irrecuperables = 0;
+  DB.evaluaciones.forEach(ev=>{
+    const fixed = normalizeSemana_(ev.semana);
+    if(fixed && fixed !== ev.semana){ ev.semana = fixed; reparadas++; }
+    else if(!fixed){ irrecuperables++; }
+    if(ev.timestamp){
+      const d = new Date(ev.timestamp);
+      if(!isNaN(d.getTime())) ev.timestamp = d.toISOString();
+    }
+  });
+  saveLocal();
+  renderAll();
+  const statusEl = document.getElementById("repararStatus");
+  statusEl.textContent = `✔ Revisadas ${DB.evaluaciones.length} evaluaciones — ${reparadas} reparadas` + (irrecuperables ? `, ${irrecuperables} sin fecha reconocible (revísalas manualmente en Historial).` : ".");
+  await cloudPush();
+  toast("Reparación completada");
+});
 
 /* Init */
 document.getElementById("evalFecha").value = lastFriday();
