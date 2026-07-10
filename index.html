@@ -501,18 +501,39 @@ async function cloudPush(){
   if(!CLOUD_URL) return;
   const problem = validateCloudUrl_(CLOUD_URL);
   if(problem){ setSyncStatus("off","URL inválida"); return; }
+
+  const payloadStr = JSON.stringify({ empleados: DB.empleados, evaluaciones: DB.evaluaciones });
+  const encoded = encodeURIComponent(payloadStr);
+
+  // Si los datos son pequeños, usamos JSONP (GET): esto nos permite CONFIRMAR de verdad
+  // que Google guardó los datos y ver el error real si algo falla.
+  if(encoded.length < 6000){
+    try{
+      const data = await jsonp_(CLOUD_URL + "?action=saveAll&data=" + encoded);
+      if(data && data.status === "error"){
+        throw new Error(data.message || "El script reportó un error al guardar.");
+      }
+      setSyncStatus("ok","conectado a Google Sheets");
+      document.getElementById("configStatus").textContent = "✔ Guardado confirmado en Google Sheets ("+(data.empleados||0)+" empleados, "+(data.evaluaciones||0)+" evaluaciones). "+new Date().toLocaleTimeString("es-MX");
+      return;
+    }catch(e){
+      console.error(e);
+      setSyncStatus("off","no se pudo confirmar el guardado");
+      document.getElementById("configStatus").textContent = "⚠ "+(e.message || "No se pudo guardar en Google Sheets. Tus datos siguen a salvo en este dispositivo.");
+      return;
+    }
+  }
+
+  // Si los datos ya son demasiado grandes para ir en la URL, usamos POST sin poder confirmar la respuesta.
   try{
-    // modo no-cors: Google Apps Script no siempre agrega encabezados CORS a las respuestas de POST
-    // desde otro dominio. Con no-cors la petición sí llega y se ejecuta en el servidor,
-    // aunque el navegador no nos deje leer la respuesta de confirmación.
     await fetch(CLOUD_URL, {
       method:"POST",
       mode:"no-cors",
       headers:{"Content-Type":"text/plain"},
-      body: JSON.stringify({ action:"saveAll", empleados: DB.empleados, evaluaciones: DB.evaluaciones })
+      body: payloadStr
     });
     setSyncStatus("ok","conectado a Google Sheets");
-    document.getElementById("configStatus").textContent = "✔ Guardado enviado a la nube. Última sincronización: "+new Date().toLocaleTimeString("es-MX");
+    document.getElementById("configStatus").textContent = "✔ Guardado enviado a la nube (datos grandes, sin confirmación de lectura). "+new Date().toLocaleTimeString("es-MX");
   }catch(e){
     console.error(e);
     setSyncStatus("off","no se pudo sincronizar (guardado local)");
