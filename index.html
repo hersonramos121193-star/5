@@ -234,7 +234,7 @@ td.center, th.center{text-align:center;}
       </div>
       <div class="seal">
         <div class="num" id="globalAvg">—</div>
-        <div class="lbl">Promedio<br>general</div>
+        <div class="lbl">Suma prom.<br>(de 100)</div>
       </div>
     </div>
     <div class="acta-meta">
@@ -359,7 +359,7 @@ td.center, th.center{text-align:center;}
         <thead><tr>
           <th>Semana</th><th>Empleado</th><th>Depto.</th>
           <th class="center">Seiri</th><th class="center">Seiton</th><th class="center">Seiso</th><th class="center">Seiketsu</th><th class="center">Shitsuke</th>
-          <th class="center">Prom.</th><th>Comentarios</th><th class="center">Acciones</th>
+          <th class="center">Suma</th><th>Comentarios</th><th class="center">Acciones</th>
         </tr></thead>
         <tbody id="histTableBody"></tbody>
       </table>
@@ -385,8 +385,8 @@ td.center, th.center{text-align:center;}
     <div class="panel">
       <h2><span class="idx">07</span> Escala de calificación</h2>
       <p class="small-text">
-        Cada una de las 5S se califica de <b>1 a 20</b>.<br>
-        🟢 Verde: 16–20 (cumple estándar) &nbsp;·&nbsp; 🟡 Amarillo: 11–15 (requiere atención) &nbsp;·&nbsp; 🔴 Rojo: 1–10 (crítico, requiere plan de acción inmediato).
+        Cada una de las 5S se califica de <b>1 a 20</b>. La <b>suma total</b> de la evaluación (las 5S juntas) va de 5 a 100.<br>
+        🟢 Verde: 80–100 (cumple estándar) &nbsp;·&nbsp; 🟡 Amarillo: 55–79 (requiere atención) &nbsp;·&nbsp; 🔴 Rojo: menos de 55 (crítico, requiere plan de acción inmediato).
       </p>
     </div>
     <div class="panel">
@@ -544,13 +544,18 @@ async function cloudPush(){
 /* =====================================================================
    HELPERS DE CÁLCULO
    ===================================================================== */
-function promedioEval(ev){
+function sumaEval(ev){
   const vals = S_KEYS.map(s=>Number(ev[s.key])||0);
-  return vals.reduce((a,b)=>a+b,0)/vals.length;
+  return vals.reduce((a,b)=>a+b,0);
 }
 function statusFromScore(score){
   if(score>=16) return "verde";
   if(score>=11) return "amarillo";
+  return "rojo";
+}
+function statusFromTotal(total){
+  if(total>=80) return "verde";
+  if(total>=55) return "amarillo";
   return "rojo";
 }
 function lastFriday(){
@@ -662,8 +667,8 @@ function renderSliders(){
 }
 function updateEvalPreview(){
   const vals = S_KEYS.map(s=>Number(document.getElementById("slider-"+s.key).value));
-  const prom = (vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1);
-  document.getElementById("evalPromedioPreview").textContent = "Promedio de esta evaluación: "+prom+" / 20";
+  const suma = vals.reduce((a,b)=>a+b,0);
+  document.getElementById("evalPromedioPreview").textContent = "Suma total de esta evaluación: "+suma+" / 100";
 }
 
 function populateEmpleadoSelects(){
@@ -748,9 +753,9 @@ function renderDashboard(){
       grid.appendChild(card);
       return;
     }
-    const prom = promedioEval(ev);
-    sumAvg += prom; countAvg++;
-    const st = statusFromScore(prom);
+    const suma = sumaEval(ev);
+    sumAvg += suma; countAvg++;
+    const st = statusFromTotal(suma);
     let barsHtml = "";
     S_KEYS.forEach(s=>{
       const v = ev[s.key];
@@ -762,7 +767,7 @@ function renderDashboard(){
       </div>`;
     });
     card.innerHTML = `
-      <div class="emp-seal status-${st}"><span class="n">${prom.toFixed(1)}</span><span class="of">de 20</span></div>
+      <div class="emp-seal status-${st}"><span class="n">${suma}</span><span class="of">de 100</span></div>
       <div class="dept-tag">${emp.departamento}</div>
       <h3>${emp.nombre}</h3>
       <div class="week-note">Semana del ${fmtDate(ev.semana)}</div>
@@ -775,7 +780,7 @@ function renderDashboard(){
   document.getElementById("metaTotal").textContent = DB.evaluaciones.length;
   const ultima = DB.evaluaciones.map(e=>e.semana).sort().reverse()[0];
   document.getElementById("metaUltima").textContent = ultima ? fmtDate(ultima) : "sin registros";
-  document.getElementById("globalAvg").textContent = countAvg ? (sumAvg/countAvg).toFixed(1) : "—";
+  document.getElementById("globalAvg").textContent = countAvg ? Math.round(sumAvg/countAvg) : "—";
 }
 document.getElementById("filterDept").addEventListener("change", renderDashboard);
 document.getElementById("filterWeek").addEventListener("change", renderDashboard);
@@ -804,12 +809,12 @@ function renderHistorial(){
   document.getElementById("histEmpty").style.display = rows.length? "none":"block";
 
   rows.forEach(ev=>{
-    const prom = promedioEval(ev).toFixed(1);
+    const suma = sumaEval(ev);
     const tr = document.createElement("tr");
     tr.innerHTML = `<td class="mono">${fmtDate(ev.semana)}</td><td>${nombreDe(ev.empleadoId)}</td><td>${deptoDe(ev.empleadoId)}</td>
       <td class="center mono">${ev.seiri}</td><td class="center mono">${ev.seiton}</td><td class="center mono">${ev.seiso}</td>
       <td class="center mono">${ev.seiketsu}</td><td class="center mono">${ev.shitsuke}</td>
-      <td class="center mono"><b>${prom}</b></td><td>${ev.comentarios||"—"}</td>
+      <td class="center mono"><b>${suma}</b></td><td>${ev.comentarios||"—"}</td>
       <td class="center"><button class="btn danger" data-delev="${ev.id}">✕</button></td>`;
     body.appendChild(tr);
   });
@@ -838,8 +843,8 @@ document.getElementById("btnExportExcel").addEventListener("click", ()=>{
     "Seiso (Limpieza)": ev.seiso,
     "Seiketsu (Estandarización)": ev.seiketsu,
     "Shitsuke (Disciplina)": ev.shitsuke,
-    "Promedio": Number(promedioEval(ev).toFixed(2)),
-    "Estatus": statusFromScore(promedioEval(ev)).toUpperCase(),
+    "Suma total": sumaEval(ev),
+    "Estatus": statusFromTotal(sumaEval(ev)).toUpperCase(),
     "Comentarios": ev.comentarios || ""
   }));
   if(rows.length===0){ toast("No hay evaluaciones para exportar"); return; }
