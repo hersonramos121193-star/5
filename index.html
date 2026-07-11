@@ -907,7 +907,7 @@ function renderAll(){
   renderHistorial();
 }
 
-/* Reparar fechas dañadas (de datos guardados antes de la corrección) */
+/* Reparar fechas dañadas y fusionar duplicados (misma persona + misma semana) */
 document.getElementById("btnRepararFechas").addEventListener("click", async ()=>{
   let reparadas = 0, irrecuperables = 0;
   DB.evaluaciones.forEach(ev=>{
@@ -919,11 +919,28 @@ document.getElementById("btnRepararFechas").addEventListener("click", async ()=>
       if(!isNaN(d.getTime())) ev.timestamp = d.toISOString();
     }
   });
+
+  // Fusionar duplicados: si dos evaluaciones quedan con la misma persona + misma semana
+  // (algo que puede pasar al normalizar fechas que antes se veían "distintas"),
+  // nos quedamos con la más reciente según su timestamp.
+  const porLlave = {};
+  DB.evaluaciones.forEach(ev=>{
+    const llave = ev.empleadoId + "|" + ev.semana;
+    const previa = porLlave[llave];
+    if(!previa || new Date(ev.timestamp||0) >= new Date(previa.timestamp||0)){
+      porLlave[llave] = ev;
+    }
+  });
+  const antes = DB.evaluaciones.length;
+  DB.evaluaciones = Object.values(porLlave);
+  const fusionadas = antes - DB.evaluaciones.length;
+
   saveLocal();
   renderAll();
   const statusEl = document.getElementById("repararStatus");
-  statusEl.textContent = `✔ Revisadas ${DB.evaluaciones.length} evaluaciones — ${reparadas} reparadas` + (irrecuperables ? `, ${irrecuperables} sin fecha reconocible (revísalas manualmente en Historial).` : ".");
+  statusEl.textContent = `✔ Revisadas ${antes} evaluaciones — ${reparadas} fechas reparadas, ${fusionadas} duplicadas fusionadas` + (irrecuperables ? `, ${irrecuperables} sin fecha reconocible (revísalas manualmente en Historial).` : ".") + ` Total final: ${DB.evaluaciones.length}.`;
   await cloudPush();
+  await cloudPull();
   toast("Reparación completada");
 });
 
